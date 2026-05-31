@@ -1,0 +1,24 @@
+[project]
+name = "kinoagent"
+version = "0.1.0"
+description = "A LangGraph movie-recommendation agent over the TMDB API."
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph",
+    "langchain-core",
+    "langchain-groq",
+    "trustcall",
+    "tmdbsimple",
+    "nltk",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = ["langgraph-cli[inmem]"]   # `langgraph dev` / Studio — install via: pip install -e ".[dev]"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["kinoagent*"]

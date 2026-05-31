@@ -1,0 +1,24 @@
+# secrets / environment
+.env
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# langgraph dev runtime
+.langgraph_api/
+
+# editor
+.vscode/
+
+# personal data (user supplies their own Letterboxd export)
+user_data.db
+ratings.csv
+watched.csv
+.letterboxd_cache.json
+
+# local notes / generated caches
+prompts.txt
+keyword_ids_05_17_2026.json

@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "kinoagent": "kinoagent.graph:graph"
+  },
+  "env": ".env"
+}
