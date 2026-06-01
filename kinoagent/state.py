@@ -53,3 +53,4 @@ class RecommendationState(TypedDict):
     discover_filters: dict                   # filters handed to discover
     final_recommendations: list              # final ranked TMDB IDs
     recommendations: list                    # readable picks [{title, year, tmdb_id, score, reason}]
+    taste_mode: bool                         # discover fell back to pure-taste recs -> rank by taste

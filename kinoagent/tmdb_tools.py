@@ -173,7 +173,7 @@ def format_context(ctx: MovieContext) -> str:
         f"TMDB Keywords: {keywords_str}\n"
         f"Crew: {crew_str}\n"
         f"Cast: {cast_str}\n"
-        f"Overview: {ctx.overview[:300]}\n"
+        f"Overview: {ctx.overview[:240]}\n"
     )
 
 

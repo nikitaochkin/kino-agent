@@ -27,8 +27,9 @@ from .tmdb_tools import (
 )
 
 # --- discover retry loop tunables -------------------------------------------
-MIN_CANDIDATES = 15   # below this, relax a soft knob and retry discover
-MAX_RELAX = 2         # hard stop on relaxation tiers
+MIN_CANDIDATES = 15     # below this, relax a soft knob and retry discover
+MAX_RELAX = 2           # hard stop on relaxation tiers
+TASTE_SEED_COUNT = 8    # pure-taste mode: how many top-rated films to seed from
 
 DB_PATH = Path("user_data.db")
 
@@ -592,6 +593,34 @@ def discover_agent(state: RecommendationState) -> dict:
             if len(set(discover_found)) >= 8:
                 break
 
+    # Pure-taste fallback: the query gave nothing to retrieve from (no seeds, no usable
+    # keywords, no genre, no crew) and set no constraints -> "just recommend by my taste".
+    # Pull the recommendations of the user's top-rated films directly; ranking sorts by
+    # taste. A thematic query (e.g. "something funny") produces keywords -> discover_found
+    # is non-empty -> this never fires.
+    taste_mode = False
+    has_constraints = bool(
+        (state.get("constraints") or {})
+        or filters.get("with_origin_country") or filters.get("with_original_language")
+        or filters.get("release_date_gte") or filters.get("release_date_lte")
+    )
+    if not tmdb_seeded and not crew_found and not discover_found and not has_constraints:
+        ratings = state.get("movie_ratings") or {}
+        if ratings:
+            top = sorted(ratings.items(), key=lambda kv: kv[1], reverse=True)[:TASTE_SEED_COUNT]
+            for fav_id, _ in top:
+                try:
+                    mv = tmdb.Movies(fav_id)
+                    pool = ([m["id"] for m in mv.recommendations()["results"]]
+                            + [m["id"] for m in mv.similar_movies()["results"]])
+                except Exception:
+                    pool = []
+                for mid in pool:
+                    if mid not in exclude and mid not in discover_found:
+                        discover_found.append(mid)
+            taste_mode = True
+            print(f"🎲 pure-taste fallback: {len(discover_found)} candidates from top-{len(top)} rated (recs + similar)")
+
     TARGET = 34
     CAPS = {"tmdb": 16, "crew": 6, "discover": None}
     buckets = {"tmdb": tmdb_seeded, "crew": crew_found, "discover": discover_found}
@@ -612,7 +641,7 @@ def discover_agent(state: RecommendationState) -> dict:
         print(f"[discover_agent] bucket {name}: took {taken}/{len(buckets[name])} (budget {budget})")
 
     print(f"\n[discover_agent] Final {len(final)} candidates")
-    return {"final_recommendations": final}
+    return {"final_recommendations": final, "taste_mode": taste_mode}
 
 
 # --- relaxation loop --------------------------------------------------------
@@ -675,10 +704,16 @@ def build_taste_profile(movie_ratings: dict) -> dict:
 
 
 def _taste_score(ctx, profile: dict) -> float:
-    """Keyword-only affinity of a candidate to the taste profile (genres are volume-driven)."""
-    if not profile:
+    """Keyword-only affinity, length-normalised so heavily-tagged films don't dominate.
+
+    A raw sum rewards films with many keywords (more chances to overlap the profile);
+    dividing by sqrt(#keywords) tames that volume bias without flipping the advantage to
+    sparsely-tagged films. Genres aren't scored (too volume-driven to discriminate).
+    """
+    if not profile or not ctx.keywords:
         return 0.0
-    return sum(profile["keywords"].get(kk["id"], 0.0) for kk in ctx.keywords)
+    raw = sum(profile["keywords"].get(kk["id"], 0.0) for kk in ctx.keywords)
+    return raw / (len(ctx.keywords) ** 0.5)
 
 
 def print_taste_profile(profile: dict, top: int = 12) -> None:
@@ -713,6 +748,30 @@ def ranking_agent(state: RecommendationState) -> dict:
             for mid, ctx in zip(missing, ex.map(fetch_ranking_context, missing)):
                 if ctx:
                     contexts[mid] = ctx
+
+    # Pure-taste mode: no query to be "relevant" to (the LLM would score everything 0,
+    # "no reference"). Rank purely by the taste profile and skip the LLM call entirely.
+    if state.get("taste_mode"):
+        profile = build_taste_profile(state.get("movie_ratings", {}))
+        scores = {mid: _taste_score(contexts[mid], profile)
+                  for mid in candidate_ids if mid in contexts}
+        ranked = sorted(scores, key=scores.get, reverse=True)[:12]
+        top_score = max((scores[m] for m in ranked), default=0.0) or 1.0   # normalise to [0,1]
+        print("\n=== RANKING (taste mode) ===")
+        recommendations = []
+        for mid in ranked:
+            ctx = contexts[mid]
+            norm = max(0.0, round(scores[mid] / top_score, 2))
+            print(f"✅ {ctx.title}: {norm:.2f} (taste {scores[mid]:+.1f})")
+            recommendations.append({
+                "title": ctx.title,
+                "year": ctx.release_date[:4] if ctx.release_date else "",
+                "tmdb_id": mid,
+                "score": norm,
+                "reason": "matches your taste",
+            })
+        return {"final_recommendations": ranked, "recommendations": recommendations,
+                "movie_contexts": contexts}
 
     listed = [(i, contexts[mid]) for i, mid in enumerate(candidate_ids) if mid in contexts]
     candidates_text = "\n".join(

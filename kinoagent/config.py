@@ -22,6 +22,8 @@ llm_strong = ChatGroq(
     model="openai/gpt-oss-120b",
     temperature=0,
     max_retries=3,
-    max_tokens=4096,
+    max_tokens=2048,            # free tier caps gpt-oss-120b at 8000 TPM; the reserved
+                                # max_tokens counts toward "requested", so keep it modest
+                                # (structured outputs here need well under 2048 anyway)
     reasoning_effort="medium",
 )
