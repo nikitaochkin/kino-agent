@@ -46,7 +46,7 @@ flowchart LR
 One line per node:
 - **load_user_data** — pull watched/ratings from the local SQLite DB
 - **query_parser** — extract seed titles + hard constraints (country, language, dates)
-- **seed_resolver** — resolve seed titles to TMDB IDs
+- **seed_resolver** — resolve seed titles to TMDB IDs (picks the most-voted match; **asks the user via an interrupt** when a title is ambiguous — e.g. an original vs a remake)
 - **movie_enrichment** — fetch seed metadata (keywords, crew, cast, recommendations)
 - **analysis** — *one* structured LLM call: keywords across 5 axes (theme, mood, visual, pacing, character) + genres, crew, cast, runtime, and a per-query axis ranking
 - **build_filters** — round-robin keywords by the query's axis priority, dedupe, apply guards
@@ -92,6 +92,11 @@ final rating = 0.7 · relevance + 0.3 · taste
 ```
 
 Already-watched films are excluded.
+
+**Pure-taste mode.** With no film named and no constraints ("recommend me something"),
+there's nothing to retrieve from — so the agent seeds from your own top-rated films, pools
+their TMDB recommendations/similar, and ranks purely by the keyword-taste signal above
+(length-normalised so heavily-tagged films don't dominate).
 
 ## Engineering decisions (what this project is really about)
 
